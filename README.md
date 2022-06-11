@@ -1,5 +1,11 @@
 # OptML_ASGD
 
-Basic PyTorch distributed tutorials: <https://pytorch.org/tutorials/intermediate/dist_tuto.html>
+src/sgd.py: implement a classic sequential SGD training algorithm = reference/baseline
 
-A tutorial to implement a parameter server using PyTorch (to implement ASGD): <https://pytorch.org/tutorials/intermediate/rpc_param_server_tutorial.html>
+    python -m src.sgd
+
+src/asgd.py: emulates an ASGD training algorithm (WIP)
+
+    python -m src.asgd
+
+src/data.py: implement some data loading utilities
