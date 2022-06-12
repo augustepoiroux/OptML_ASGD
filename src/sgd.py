@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
+
 from .data import DataPartitioner
 
 N_EPOCHS = 10
@@ -12,6 +14,16 @@ if __name__ == "__main__":
 
     # Create a model
     model = nn.Sequential(nn.Flatten(), nn.Linear(784, 10)).to(device)
+    # model = nn.Sequential(
+    #     nn.Conv2d(1, 10, kernel_size=5),
+    #     nn.ReLU(),
+    #     nn.MaxPool2d(kernel_size=2),
+    #     nn.Conv2d(10, 20, kernel_size=5),
+    #     nn.ReLU(),
+    #     nn.MaxPool2d(kernel_size=2),
+    #     nn.Flatten(),
+    #     nn.Linear(320, 10),
+    # ).to(device)
 
     # Load data
     dataset = datasets.MNIST(
@@ -44,7 +56,11 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
 
+    # Instantiates tensorboard
+    writer = SummaryWriter(log_dir="./runs/sgd")
+
     # Train the model
+    n_batch = 0
     for epoch in range(N_EPOCHS):
         # Train
         model.train()
@@ -57,20 +73,26 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
+            writer.add_scalar("Loss/train", loss.item() / len(data), n_batch)
+            n_batch += 1
         train_loss /= len(train_loader.dataset)
 
         # Evaluate the model on the validation set
-        model.eval()
-        val_loss = 0.0
-        correct = 0
-        for data, target in val_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            val_loss += criterion(output, target).item()
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-        val_loss /= len(val_loader.dataset)
-        val_acc = correct / len(val_loader.dataset)
+        with torch.no_grad():
+            model.eval()
+            val_loss = 0.0
+            correct = 0
+            for data, target in val_loader:
+                data, target = data.to(device), target.to(device)
+                output = model(data)
+                val_loss += criterion(output, target).item()
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            val_loss /= len(val_loader.dataset)
+            val_acc = correct / len(val_loader.dataset)
+
+        writer.add_scalar("Loss/val", val_loss, n_batch)
+        writer.add_scalar("Accuracy/val", val_acc, n_batch)
 
         print(
             f"[Epoch {epoch + 1} / {N_EPOCHS}]"
@@ -88,6 +110,10 @@ if __name__ == "__main__":
             output = model(data)
             pred = output.argmax(dim=1)
             correct += pred.eq(target).sum().item()
-        print(
-            f"Test accuracy: {100 * correct / len(test_loader.dataset):.2f}%"
-        )
+        test_acc = correct / len(test_loader.dataset)
+
+        writer.add_scalar("Accuracy/test", test_acc, n_batch)
+
+        print(f"Test accuracy: {test_acc*100:.2f}%")
+
+    writer.flush()

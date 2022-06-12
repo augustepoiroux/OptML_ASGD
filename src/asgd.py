@@ -8,8 +8,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
 
 from .data import partition_mnist_v2
+
+BATCH_SIZE = 128
 
 
 @total_ordering
@@ -32,6 +35,7 @@ class PrioritizedDevice(PrioritizedItem):
 @dataclass(eq=False)
 class PrioritizedGradient(PrioritizedItem):
     gradient: Any = field(compare=False)
+    loss: float = field(compare=False)
 
 
 @dataclass(order=True)
@@ -95,7 +99,7 @@ class ASGDTrainer:
         mean_time_train = 1.0
         std_time_train = 0.5
 
-        mean_time_gradient = 0.2
+        mean_time_gradient = 1.0
         std_time_gradient = 0.1
 
         mean_time_update = 0.1
@@ -114,6 +118,7 @@ class ASGDTrainer:
             self.queue.put(PrioritizedDevice(device_time, device))
 
         n_update = 0
+        n_batch = [0 for _ in range(self.num_device)]
         while n_update < nb_updates:
             # get next item to process
             item = self.queue.get()
@@ -134,6 +139,12 @@ class ASGDTrainer:
                 pred = models[device](input)
                 loss = self.criterion(pred, target)
                 loss.backward()
+                train_loss = loss.item() / len(input)
+
+                writer.add_scalar(
+                    f"Loss/train_device_{device}", train_loss, n_batch[device],
+                )
+                n_batch[device] += 1
 
                 # add gradient to queue
                 grad = []
@@ -142,7 +153,9 @@ class ASGDTrainer:
                 grad_time = t + np.random.normal(
                     mean_time_gradient, std_time_gradient
                 )
-                self.queue.put(PrioritizedGradient(grad_time, grad))
+                self.queue.put(
+                    PrioritizedGradient(grad_time, grad, train_loss)
+                )
 
                 # add model update to queue
                 model_update_time = t + np.random.normal(
@@ -159,15 +172,19 @@ class ASGDTrainer:
                 for param, grad_param in zip(model.parameters(), grad):
                     param.grad = grad_param
                 optimizer.step()
+
+                writer.add_scalar("Loss/train", item.loss, n_update)
                 n_update += 1
 
                 # evaluate model on validation set
                 if n_update % val_every_n_updates == 0:
                     val_loss, val_acc = self.evaluate(model, val_loader)
+                    writer.add_scalar("Loss/val", val_loss, n_update)
+                    writer.add_scalar("Accuracy/val", val_acc, n_update)
                     print(
                         f"[{n_update}]"
                         f"\tval_loss {val_loss:.4f}"
-                        + f"\tval_acc {val_acc *100:.4f}%"
+                        f"\tval_acc {val_acc *100:.4f}%"
                     )
 
             elif isinstance(item, PrioritizedModelUpdate):
@@ -181,32 +198,48 @@ class ASGDTrainer:
 
         # evaluate model on test set
         test_loss, test_acc = self.evaluate(model, test_loader)
+        writer.add_scalar("Loss/test", test_loss, n_update)
+        writer.add_scalar("Accuracy/test", test_acc, n_update)
         print(f"test_loss {test_loss:.4f}\ttest_acc {test_acc *100:.4f}%")
 
     def evaluate(
         self, model: nn.Module, data_loader: torch.utils.data.DataLoader
     ):
         """ Evaluate the model on the given data loader """
-        model.eval()
-        loss = 0.0
-        correct = 0
-        for input, target in data_loader:
-            input = input.to(self.torch_device)
-            target = target.to(self.torch_device)
-            pred = model(input)
-            loss += self.criterion(pred, target).item()
-            pred = pred.argmax(dim=1)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-        loss /= len(data_loader)
-        acc = correct / len(data_loader.dataset)
-        return loss, acc
+        with torch.no_grad():
+            model.eval()
+            loss = 0.0
+            correct = 0
+            for input, target in data_loader:
+                input = input.to(self.torch_device)
+                target = target.to(self.torch_device)
+                pred = model(input)
+                loss += self.criterion(pred, target).item()
+                pred = pred.argmax(dim=1)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+            loss /= len(data_loader.dataset)
+            acc = correct / len(data_loader.dataset)
+            return loss, acc
 
 
 if __name__ == "__main__":
-    trainer = ASGDTrainer(num_device=10)
+    num_device = 4
+    writer = SummaryWriter(log_dir=f"./runs/asgd_{num_device}_devices")
+    trainer = ASGDTrainer(num_device=num_device)
     trainer.train(
         model=nn.Sequential(nn.Flatten(), nn.Linear(784, 10)),
-        nb_updates=1000,
+        # model=nn.Sequential(
+        #     nn.Conv2d(1, 10, kernel_size=5),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2),
+        #     nn.Conv2d(10, 20, kernel_size=5),
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=2),
+        #     nn.Flatten(),
+        #     nn.Linear(320, 10),
+        # ),
+        nb_updates=3300,
         lr=0.01,
-        val_every_n_updates=10,
+        batch_size=BATCH_SIZE,
+        val_every_n_updates=300,
     )
