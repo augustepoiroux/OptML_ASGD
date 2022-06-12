@@ -2,6 +2,7 @@ import copy
 from dataclasses import dataclass, field
 from functools import total_ordering
 from queue import PriorityQueue
+import time
 from typing import Any
 
 import numpy as np
@@ -70,6 +71,7 @@ class ASGDTrainer:
         weight_decay: float = 0.0,
         batch_size: int = 128,
         val_every_n_updates: int = 100,
+        latency_dispersion: float = 0.7,
     ):
         """ Train the model """
 
@@ -96,14 +98,15 @@ class ASGDTrainer:
         )
 
         # Define devices characteristics
-        mean_time_train = 1.0
-        std_time_train = 0.5
+        # latency is modeled using a LogNormal distribution
+        mu_time_train = 0.0
+        sigma_time_train = latency_dispersion
 
-        mean_time_gradient = 1.0
-        std_time_gradient = 0.1
+        mu_time_gradient = 0.0
+        sigma_time_gradient = latency_dispersion
 
-        mean_time_update = 0.1
-        std_time_update = 0.05
+        mu_time_update = 0.0
+        sigma_time_update = latency_dispersion
 
         # Global time
         t = 0
@@ -114,7 +117,9 @@ class ASGDTrainer:
 
         # fill queue with orders to execute
         for device in range(self.num_device):
-            device_time = np.random.normal(t + mean_time_train, std_time_train)
+            device_time = t + np.random.lognormal(
+                mu_time_train, sigma_time_train
+            )
             self.queue.put(PrioritizedDevice(device_time, device))
 
         n_update = 0
@@ -142,7 +147,7 @@ class ASGDTrainer:
                 train_loss = loss.item() / len(input)
 
                 writer.add_scalar(
-                    f"Loss/train_device_{device}", train_loss, n_batch[device],
+                    f"Loss_device/train_{device}", train_loss, n_batch[device],
                 )
                 n_batch[device] += 1
 
@@ -150,16 +155,16 @@ class ASGDTrainer:
                 grad = []
                 for param in models[device].parameters():
                     grad.append(param.grad.data.clone())
-                grad_time = t + np.random.normal(
-                    mean_time_gradient, std_time_gradient
+                grad_time = t + np.random.lognormal(
+                    mu_time_gradient, sigma_time_gradient
                 )
                 self.queue.put(
                     PrioritizedGradient(grad_time, grad, train_loss)
                 )
 
                 # add model update to queue
-                model_update_time = t + np.random.normal(
-                    mean_time_update, std_time_update
+                model_update_time = t + np.random.lognormal(
+                    mu_time_update, sigma_time_update
                 )
                 self.queue.put(
                     PrioritizedModelUpdate(model_update_time, device)
@@ -191,8 +196,8 @@ class ASGDTrainer:
                 # update model on device
                 device = item.device
                 models[device] = copy.deepcopy(model)
-                train_time = t + np.random.normal(
-                    mean_time_train, std_time_train
+                train_time = t + np.random.lognormal(
+                    mu_time_train, sigma_time_train
                 )
                 self.queue.put(PrioritizedDevice(train_time, device))
 
@@ -223,8 +228,11 @@ class ASGDTrainer:
 
 
 if __name__ == "__main__":
-    num_device = 4
-    writer = SummaryWriter(log_dir=f"./runs/asgd_{num_device}_devices")
+    num_device = 50
+    latency_dispersion = 0.7
+    writer = SummaryWriter(
+        log_dir=f"./runs/asgd_{num_device}_devices_{latency_dispersion:.2f}_latency_{time.time()}"
+    )
     trainer = ASGDTrainer(num_device=num_device)
     trainer.train(
         model=nn.Sequential(nn.Flatten(), nn.Linear(784, 10)),
@@ -238,8 +246,9 @@ if __name__ == "__main__":
         #     nn.Flatten(),
         #     nn.Linear(320, 10),
         # ),
-        nb_updates=3300,
+        nb_updates=10000,
         lr=0.01,
         batch_size=BATCH_SIZE,
         val_every_n_updates=300,
+        latency_dispersion=latency_dispersion,
     )

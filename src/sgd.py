@@ -5,7 +5,7 @@ from torchvision import datasets, transforms
 
 from .data import DataPartitioner
 
-N_EPOCHS = 10
+N_EPOCHS = 30
 BATCH_SIZE = 128
 
 if __name__ == "__main__":
