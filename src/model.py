@@ -1,9 +1,12 @@
 import torch
 import torch.nn as nn
+import os
 
 N_EPOCHS = 30
 BATCH_SIZE = 128
 LR = 0.01
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def instantiate_model(name: str, device="cpu"):

@@ -1,5 +1,6 @@
 import argparse
 import copy
+import os
 import random
 import time
 from dataclasses import dataclass, field
@@ -14,7 +15,7 @@ from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
 from .data import partition_mnist
-from .model import BATCH_SIZE, LR, evaluate, instantiate_model
+from .model import BATCH_SIZE, LR, ROOT_DIR, evaluate, instantiate_model
 
 # fix seed for reproducibility
 seed = 0
@@ -88,8 +89,11 @@ class ASGDTrainer:
 
         # Instantiate logger
         writer = SummaryWriter(
-            log_dir=f"./runs/asgd_{self.model_name}_{self.num_device}"
-            f"_devices_{latency_dispersion:.2f}_latency_{time.time()}"
+            log_dir=os.path.join(
+                ROOT_DIR,
+                f"runs/asgd_{self.model_name}_{self.num_device}"
+                f"_devices_{latency_dispersion:.2f}_latency_{time.time()}",
+            )
         )
 
         # Create a data loader for the training, validation, and test sets

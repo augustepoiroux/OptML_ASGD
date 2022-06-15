@@ -1,3 +1,4 @@
+import os
 import random
 import time
 
@@ -8,7 +9,14 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
 
 from .data import DataPartitioner
-from .model import BATCH_SIZE, N_EPOCHS, LR, evaluate, instantiate_model
+from .model import (
+    ROOT_DIR,
+    BATCH_SIZE,
+    LR,
+    N_EPOCHS,
+    evaluate,
+    instantiate_model,
+)
 
 # fix seed for reproducibility
 seed = 0
@@ -27,7 +35,7 @@ if __name__ == "__main__":
 
     # Load data
     dataset = datasets.MNIST(
-        "./data",
+        os.path.join(ROOT_DIR, "data"),
         train=True,
         download=True,
         transform=transforms.Compose(
@@ -57,7 +65,9 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=LR)
 
     # Instantiates tensorboard
-    writer = SummaryWriter(log_dir=f"./runs/sgd_{model_name}_{time.time()}")
+    writer = SummaryWriter(
+        log_dir=os.path.join(ROOT_DIR, f"runs/sgd_{model_name}_{time.time()}")
+    )
 
     # Train the model
     n_batch = 0
