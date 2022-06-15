@@ -124,9 +124,9 @@ class ASGDTrainer:
         # Instantiate an optimizer
         optimizer = optim.SGD(
             model.parameters(),
-            lr=LR / np.sqrt(NUM_DEVICE)
+            lr=lr / np.sqrt(self.num_device)
             if self.algorithm == "adjusted"
-            else LR,
+            else lr,
             momentum=momentum,
             weight_decay=weight_decay,
         )
@@ -148,6 +148,11 @@ class ASGDTrainer:
         # copy models on each device
         model.to(self.torch_device)
         models = [copy.deepcopy(model) for _ in range(self.num_device)]
+
+        if self.algorithm == "dcasgd":
+            models_backup = [
+                copy.deepcopy(model) for _ in range(self.num_device)
+            ]
 
         # fill queue with orders to execute
         for device in range(self.num_device):
@@ -211,8 +216,24 @@ class ASGDTrainer:
                 # update parameter server model with gradient
                 model.zero_grad()
                 grad = item.gradient
-                for param, grad_param in zip(model.parameters(), grad):
-                    param.grad = grad_param
+                if self.algorithm == "dcasgd":
+                    for param, param_backup, grad_param in zip(
+                        model.parameters(),
+                        models_backup[device].parameters(),
+                        grad,
+                    ):
+                        with torch.no_grad():
+                            compensated_grad = (
+                                grad_param
+                                + VAR_CONTROL
+                                * grad_param
+                                * grad_param
+                                * (param - param_backup)
+                            )
+                        param.grad = compensated_grad
+                else:
+                    for param, grad_param in zip(model.parameters(), grad):
+                        param.grad = grad_param
                 optimizer.step()
 
                 if log:
@@ -235,6 +256,8 @@ class ASGDTrainer:
                 # update model on device
                 device = item.device
                 models[device] = copy.deepcopy(model)
+                if self.algorithm == "dcasgd":
+                    models_backup[device] = copy.deepcopy(model)
                 train_time = t + np.random.lognormal(
                     mu_time_train, sigma_time_train
                 )
@@ -264,7 +287,7 @@ if __name__ == "__main__":
         type=str,
         default="raw",
         help="algorithm to use",
-        choices=["raw", "adjusted"],
+        choices=["raw", "adjusted", "dcasgd"],
     )
     parser.add_argument(
         "--model",
@@ -290,6 +313,7 @@ if __name__ == "__main__":
     LATENCY_DISPERSION = args.latency_dispersion
     MODEL_NAME = args.model
     ALGORITHM = args.algo
+    VAR_CONTROL = 0.1
 
     # Get device
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
