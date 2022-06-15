@@ -1,8 +1,10 @@
+import argparse
 import copy
+import random
+import time
 from dataclasses import dataclass, field
 from functools import total_ordering
 from queue import PriorityQueue
-import time
 from typing import Any
 
 import numpy as np
@@ -11,9 +13,14 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
-from .data import partition_mnist_v2
+from .data import partition_mnist
+from .model import BATCH_SIZE, LR, evaluate, instantiate_model
 
-BATCH_SIZE = 128
+# fix seed for reproducibility
+seed = 0
+torch.manual_seed(seed)
+np.random.seed(seed)
+random.seed(seed)
 
 
 @total_ordering
@@ -48,17 +55,21 @@ class ASGDTrainer:
     """ Implement a fake ASGD trainer running on 1 device
     emulating the distributed training with a parameter server."""
 
-    def __init__(self, num_device: int):
+    def __init__(
+        self,
+        num_device: int,
+        model_name: str,
+        torch_device: torch.device = "cpu",
+    ):
         self.num_device = num_device
-        self.torch_device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
+        self.model_name = model_name
+        self.torch_device = torch_device
         self.queue: PriorityQueue[PrioritizedItem] = PriorityQueue()
         (
             self.train_partitions,
             self.val_set,
             self.test_set,
-        ) = partition_mnist_v2(num_device)
+        ) = partition_mnist(num_device, seed=seed)
 
         self.criterion = nn.CrossEntropyLoss()
 
@@ -66,27 +77,33 @@ class ASGDTrainer:
         self,
         model: nn.Module,
         nb_updates: int,
-        lr: float,
+        val_every_n_updates: int,
+        latency_dispersion: float,
         momentum: float = 0.0,
         weight_decay: float = 0.0,
-        batch_size: int = 128,
-        val_every_n_updates: int = 100,
-        latency_dispersion: float = 0.7,
+        lr: float = LR,
+        batch_size: int = BATCH_SIZE,
     ):
         """ Train the model """
+
+        # Instantiate logger
+        writer = SummaryWriter(
+            log_dir=f"./runs/asgd_{self.model_name}_{self.num_device}"
+            f"_devices_{latency_dispersion:.2f}_latency_{time.time()}"
+        )
 
         # Create a data loader for the training, validation, and test sets
         train_loaders = [
             torch.utils.data.DataLoader(
-                partition, batch_size=batch_size, shuffle=True
+                partition, batch_size=batch_size, shuffle=True, pin_memory=True
             )
             for partition in self.train_partitions
         ]
         val_loader = torch.utils.data.DataLoader(
-            self.val_set, batch_size=batch_size, shuffle=True
+            self.val_set, batch_size=batch_size, shuffle=True, pin_memory=True
         )
         test_loader = torch.utils.data.DataLoader(
-            self.test_set, batch_size=batch_size, shuffle=True
+            self.test_set, batch_size=batch_size, shuffle=True, pin_memory=True
         )
 
         # Instantiate an optimizer
@@ -187,9 +204,9 @@ class ASGDTrainer:
                     writer.add_scalar("Loss/val", val_loss, n_update)
                     writer.add_scalar("Accuracy/val", val_acc, n_update)
                     print(
-                        f"[{n_update}]"
-                        f"\tval_loss {val_loss:.4f}"
-                        f"\tval_acc {val_acc *100:.4f}%"
+                        f"[Batch {n_update} / {nb_updates}]"
+                        f"\tval loss: {val_loss:.4f}"
+                        f"\tval acc: {val_acc *100:.3f}%"
                     )
 
             elif isinstance(item, PrioritizedModelUpdate):
@@ -205,50 +222,53 @@ class ASGDTrainer:
         test_loss, test_acc = self.evaluate(model, test_loader)
         writer.add_scalar("Loss/test", test_loss, n_update)
         writer.add_scalar("Accuracy/test", test_acc, n_update)
-        print(f"test_loss {test_loss:.4f}\ttest_acc {test_acc *100:.4f}%")
+        print(f"test loss {test_loss:.4f}\ttest acc {test_acc *100:.3f}%")
 
     def evaluate(
         self, model: nn.Module, data_loader: torch.utils.data.DataLoader
     ):
-        """ Evaluate the model on the given data loader """
-        with torch.no_grad():
-            model.eval()
-            loss = 0.0
-            correct = 0
-            for input, target in data_loader:
-                input = input.to(self.torch_device)
-                target = target.to(self.torch_device)
-                pred = model(input)
-                loss += self.criterion(pred, target).item()
-                pred = pred.argmax(dim=1)
-                correct += pred.eq(target.view_as(pred)).sum().item()
-            loss /= len(data_loader.dataset)
-            acc = correct / len(data_loader.dataset)
-            return loss, acc
+        return evaluate(model, data_loader, self.criterion, self.torch_device)
 
 
 if __name__ == "__main__":
-    num_device = 50
-    latency_dispersion = 0.7
-    writer = SummaryWriter(
-        log_dir=f"./runs/asgd_{num_device}_devices_{latency_dispersion:.2f}_latency_{time.time()}"
+    # argparse
+    parser = argparse.ArgumentParser(
+        description="ASGD for distributed training"
     )
-    trainer = ASGDTrainer(num_device=num_device)
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="conv",
+        help="Model to use",
+        choices=["conv", "linear"],
+    )
+    parser.add_argument(
+        "--num-device", type=int, default=1, help="Number of devices to use",
+    )
+    parser.add_argument(
+        "--latency-dispersion",
+        type=float,
+        default=0.7,
+        help="Latency dispersion",
+    )
+
+    args = parser.parse_args()
+
+    # Parse arguments
+    NUM_DEVICE = args.num_device
+    LATENCY_DISPERSION = args.latency_dispersion
+    MODEL_NAME = args.model
+
+    # Get device
+    TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Instantiate a model
+    MODEL = instantiate_model(MODEL_NAME).to(TORCH_DEVICE)
+
+    trainer = ASGDTrainer(NUM_DEVICE, MODEL_NAME, TORCH_DEVICE)
     trainer.train(
-        model=nn.Sequential(nn.Flatten(), nn.Linear(784, 10)),
-        # model=nn.Sequential(
-        #     nn.Conv2d(1, 10, kernel_size=5),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2),
-        #     nn.Conv2d(10, 20, kernel_size=5),
-        #     nn.ReLU(),
-        #     nn.MaxPool2d(kernel_size=2),
-        #     nn.Flatten(),
-        #     nn.Linear(320, 10),
-        # ),
-        nb_updates=10000,
-        lr=0.01,
-        batch_size=BATCH_SIZE,
-        val_every_n_updates=300,
-        latency_dispersion=latency_dispersion,
+        model=MODEL,
+        nb_updates=9870,
+        val_every_n_updates=329,
+        latency_dispersion=LATENCY_DISPERSION,
     )

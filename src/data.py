@@ -37,23 +37,7 @@ class DataPartitioner:
         return Partition(self.data, self.partitions[partition])
 
 
-def partition_mnist(num_partitions, seed=1234):
-    """ Partitioning MNIST """
-    dataset = datasets.MNIST(
-        "./data",
-        train=True,
-        download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-        ),
-    )
-    partition_sizes = [1.0 / num_partitions for _ in range(num_partitions)]
-    partitioner = DataPartitioner(dataset, partition_sizes, seed)
-    partitions = [partitioner.use(i) for i in range(num_partitions)]
-    return partitions
-
-
-def partition_mnist_v2(
+def partition_mnist(
     num_train_partitions,
     train_size=0.7,
     val_size=0.2,
