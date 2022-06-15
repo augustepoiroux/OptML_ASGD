@@ -15,7 +15,14 @@ from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
 from .data import partition_mnist
-from .model import BATCH_SIZE, LR, ROOT_DIR, evaluate, instantiate_model
+from .model import (
+    BATCH_SIZE,
+    LR,
+    N_EPOCHS,
+    ROOT_DIR,
+    evaluate,
+    instantiate_model,
+)
 
 # fix seed for reproducibility
 seed = 0
@@ -58,10 +65,12 @@ class ASGDTrainer:
 
     def __init__(
         self,
+        algorithm: str,
         num_device: int,
         model_name: str,
         torch_device: torch.device = "cpu",
     ):
+        self.algorithm = algorithm
         self.num_device = num_device
         self.model_name = model_name
         self.torch_device = torch_device
@@ -84,17 +93,19 @@ class ASGDTrainer:
         weight_decay: float = 0.0,
         lr: float = LR,
         batch_size: int = BATCH_SIZE,
+        log=True,
     ):
         """ Train the model """
 
         # Instantiate logger
-        writer = SummaryWriter(
-            log_dir=os.path.join(
-                ROOT_DIR,
-                f"runs/asgd_{self.model_name}_{self.num_device}"
-                f"_devices_{latency_dispersion:.2f}_latency_{time.time()}",
+        if log:
+            writer = SummaryWriter(
+                log_dir=os.path.join(
+                    ROOT_DIR,
+                    f"runs/asgd_{self.algorithm}-algo_{self.model_name}_{self.num_device}"
+                    f"-devices_{latency_dispersion:.2f}-latency_{time.time()}",
+                )
             )
-        )
 
         # Create a data loader for the training, validation, and test sets
         train_loaders = [
@@ -113,7 +124,9 @@ class ASGDTrainer:
         # Instantiate an optimizer
         optimizer = optim.SGD(
             model.parameters(),
-            lr=lr,
+            lr=LR / np.sqrt(NUM_DEVICE)
+            if self.algorithm == "adjusted"
+            else LR,
             momentum=momentum,
             weight_decay=weight_decay,
         )
@@ -167,9 +180,12 @@ class ASGDTrainer:
                 loss.backward()
                 train_loss = loss.item() / len(input)
 
-                writer.add_scalar(
-                    f"Loss_device/train_{device}", train_loss, n_batch[device],
-                )
+                if log:
+                    writer.add_scalar(
+                        f"Loss_device/train_{device}",
+                        train_loss,
+                        n_batch[device],
+                    )
                 n_batch[device] += 1
 
                 # add gradient to queue
@@ -199,14 +215,16 @@ class ASGDTrainer:
                     param.grad = grad_param
                 optimizer.step()
 
-                writer.add_scalar("Loss/train", item.loss, n_update)
+                if log:
+                    writer.add_scalar("Loss/train", item.loss, n_update)
                 n_update += 1
 
                 # evaluate model on validation set
                 if n_update % val_every_n_updates == 0:
                     val_loss, val_acc = self.evaluate(model, val_loader)
-                    writer.add_scalar("Loss/val", val_loss, n_update)
-                    writer.add_scalar("Accuracy/val", val_acc, n_update)
+                    if log:
+                        writer.add_scalar("Loss/val", val_loss, n_update)
+                        writer.add_scalar("Accuracy/val", val_acc, n_update)
                     print(
                         f"[Batch {n_update} / {nb_updates}]"
                         f"\tval loss: {val_loss:.4f}"
@@ -224,8 +242,10 @@ class ASGDTrainer:
 
         # evaluate model on test set
         test_loss, test_acc = self.evaluate(model, test_loader)
-        writer.add_scalar("Loss/test", test_loss, n_update)
-        writer.add_scalar("Accuracy/test", test_acc, n_update)
+        if log:
+            writer.add_scalar("Loss/test", test_loss, n_update)
+            writer.add_scalar("Accuracy/test", test_acc, n_update)
+            writer.flush()
         print(f"test loss {test_loss:.4f}\ttest acc {test_acc *100:.3f}%")
 
     def evaluate(
@@ -238,6 +258,13 @@ if __name__ == "__main__":
     # argparse
     parser = argparse.ArgumentParser(
         description="ASGD for distributed training"
+    )
+    parser.add_argument(
+        "--algo",
+        type=str,
+        default="raw",
+        help="algorithm to use",
+        choices=["raw", "adjusted"],
     )
     parser.add_argument(
         "--model",
@@ -262,6 +289,7 @@ if __name__ == "__main__":
     NUM_DEVICE = args.num_device
     LATENCY_DISPERSION = args.latency_dispersion
     MODEL_NAME = args.model
+    ALGORITHM = args.algo
 
     # Get device
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -269,10 +297,11 @@ if __name__ == "__main__":
     # Instantiate a model
     MODEL = instantiate_model(MODEL_NAME).to(TORCH_DEVICE)
 
-    trainer = ASGDTrainer(NUM_DEVICE, MODEL_NAME, TORCH_DEVICE)
+    trainer = ASGDTrainer(ALGORITHM, NUM_DEVICE, MODEL_NAME, TORCH_DEVICE)
     trainer.train(
         model=MODEL,
-        nb_updates=9870,
+        nb_updates=N_EPOCHS * 329,
         val_every_n_updates=329,
         latency_dispersion=LATENCY_DISPERSION,
+        # log=False,
     )
