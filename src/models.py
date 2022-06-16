@@ -13,6 +13,19 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class NetworkModel(ABC):
+    """
+    This class represents a challenge on which we evaluate our ASGD and compare it with
+    a standard SGD. There are two subclasses of this abstract class, MNIST_Model and
+    CIFAR10_Model, representing respectively the MNIST and CIFAR-10 image classification
+    problems.
+
+    Each subclass describes two models tacking the challenge, along with parameters
+    with which the model should be trained: learning rate, batch size, and number
+    of epochs. The subclass also handles downloading and splitting problem data.
+
+    This class and its subclasses are completely stateless.
+    """
+
     @classmethod
     @abstractmethod
     def num_epochs(cls):
@@ -30,7 +43,7 @@ class NetworkModel(ABC):
 
     @classmethod
     @abstractmethod
-    def name(self):
+    def name(cls):
         pass
 
     @abstractmethod
@@ -89,7 +102,7 @@ class MNIST_Model(NetworkModel):
         return 0.01
 
     @classmethod
-    def name(self):
+    def name(cls):
         return "mnist"
 
     def fresh_model_instance(self, model_version: str, device: Any = None):
@@ -141,7 +154,7 @@ class CIFAR10_Model(NetworkModel):
         return 0.01
 
     @classmethod
-    def name(self):
+    def name(cls):
         return "cifar10"
 
     def fresh_model_instance(self, model_version: str, device: Any = None):
