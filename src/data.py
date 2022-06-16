@@ -51,11 +51,7 @@ class DataPartitioner:
 
 
 def partition_mnist(
-    num_train_partitions,
-    train_size=0.7,
-    val_size=0.2,
-    test_size=0.1,
-    seed=1234,
+    num_train_partitions, train_size=0.7, val_size=0.2, test_size=0.1, seed=1234,
 ):
     """
     Partitioning the MNIST data.  Returns a 3-tuple of:
