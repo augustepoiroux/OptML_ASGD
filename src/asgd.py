@@ -305,6 +305,9 @@ if __name__ == "__main__":
         default=0.7,
         help="Latency dispersion",
     )
+    parser.add_argument(
+        "--var-control", type=float, default=0.1, help="Variance control",
+    )
 
     args = parser.parse_args()
 
@@ -313,7 +316,7 @@ if __name__ == "__main__":
     LATENCY_DISPERSION = args.latency_dispersion
     MODEL_NAME = args.model
     ALGORITHM = args.algo
-    VAR_CONTROL = 0.1
+    VAR_CONTROL = args.var_control
 
     # Get device
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
