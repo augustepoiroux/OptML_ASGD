@@ -10,10 +10,10 @@ from torchvision import datasets, transforms
 
 from .data import DataPartitioner
 from .model import (
-    ROOT_DIR,
     BATCH_SIZE,
     LR,
     N_EPOCHS,
+    ROOT_DIR,
     evaluate,
     instantiate_model,
 )

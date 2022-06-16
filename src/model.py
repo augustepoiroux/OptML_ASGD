@@ -1,6 +1,7 @@
+import os
+
 import torch
 import torch.nn as nn
-import os
 
 N_EPOCHS = 30
 BATCH_SIZE = 128

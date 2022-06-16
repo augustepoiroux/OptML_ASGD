@@ -75,11 +75,9 @@ class ASGDTrainer:
         self.model_name = model_name
         self.torch_device = torch_device
         self.queue: PriorityQueue[PrioritizedItem] = PriorityQueue()
-        (
-            self.train_partitions,
-            self.val_set,
-            self.test_set,
-        ) = partition_mnist(num_device, seed=seed)
+        (self.train_partitions, self.val_set, self.test_set,) = partition_mnist(
+            num_device, seed=seed
+        )
 
         self.criterion = nn.CrossEntropyLoss()
 
@@ -181,9 +179,7 @@ class ASGDTrainer:
 
                 if log:
                     writer.add_scalar(
-                        f"Loss_device/train_{device}",
-                        train_loss,
-                        n_batch[device],
+                        f"Loss_device/train_{device}", train_loss, n_batch[device],
                     )
                 n_batch[device] += 1
 
@@ -208,9 +204,7 @@ class ASGDTrainer:
                 grad = item.gradient
                 if self.algorithm == "dcasgd":
                     for param, param_backup, grad_param in zip(
-                        model.parameters(),
-                        models_backup[device].parameters(),
-                        grad,
+                        model.parameters(), models_backup[device].parameters(), grad,
                     ):
                         with torch.no_grad():
                             compensated_grad = (
@@ -281,16 +275,10 @@ if __name__ == "__main__":
         choices=["conv", "linear"],
     )
     parser.add_argument(
-        "--num-device",
-        type=int,
-        default=1,
-        help="Number of devices to use",
+        "--num-device", type=int, default=1, help="Number of devices to use",
     )
     parser.add_argument(
-        "--latency-dispersion",
-        type=float,
-        default=0.7,
-        help="Latency dispersion",
+        "--latency-dispersion", type=float, default=0.7, help="Latency dispersion",
     )
     parser.add_argument(
         "--var-control", type=float, default=0.1, help="Variance control",
