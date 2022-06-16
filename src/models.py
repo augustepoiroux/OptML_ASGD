@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, transforms
 
-from .data import DataPartitioner, Partition
+from .data import DataPartitioner
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -132,13 +132,21 @@ class CIFAR10_Model(NetworkModel):
         return 0.01
 
     def fresh_model_instance(self, model_version: str, device: Any = None):
+        """Returns a fresh neural network model instance, either
+        - Linear (`linear): a single layer having number of input nodes equal to the input size,
+            and number of output nodes equal to the number of classes.
+        - Convolutional (`conv`): a convolutional neural network, possibly with additional
+            hidden layers.
+        Optionally you can specify a device, otherwise CUDA is preferred if available."""
+
         assert model_version in ("linear", "conv")
         if device is None:
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         if model_version == "linear":
             return nn.Sequential(nn.Flatten(), nn.Linear(3 * 32 * 32, 10)).to(device)
-        elif model_version == "conv":
 
+        elif model_version == "conv":
             # adapted from https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
             class CIFAR10_Net(nn.Module):
                 def __init__(self):
@@ -164,6 +172,8 @@ class CIFAR10_Model(NetworkModel):
             assert False, "No such model version"
 
     def dataset(self):
+        """Using torchvision.datasets, fetch data for this particular challenge
+        and transform it appropriately using torchvision.transforms."""
         return datasets.CIFAR10(
             os.path.join(ROOT_DIR, "data"),
             train=True,
@@ -183,7 +193,8 @@ def evaluate(
     criterion: nn.Module,
     device=None,
 ):
-    """Evaluate the model on the given data loader."""
+    """Evaluate the pytorch model on the given data loader and a oss criterion.
+    Optionally you can specify a device, otherwise CUDA is preferred if available."""
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     with torch.no_grad():
