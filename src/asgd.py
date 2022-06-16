@@ -86,9 +86,11 @@ class ASGDTrainer:
         self.model_name = model_name
         self.torch_device = torch_device
         self.queue: PriorityQueue[PrioritizedItem] = PriorityQueue()
-        (self.train_partitions, self.val_set, self.test_set,) = partition_mnist(
-            num_device, seed=seed
-        )
+        (
+            self.train_partitions,
+            self.val_set,
+            self.test_set,
+        ) = partition_mnist(num_device, seed=seed)
 
         self.criterion = nn.CrossEntropyLoss()
 
@@ -321,13 +323,22 @@ if __name__ == "__main__":
         choices=["conv", "linear"],
     )
     parser.add_argument(
-        "--num-device", type=int, default=1, help="Number of devices to use",
+        "--num-device",
+        type=int,
+        default=1,
+        help="Number of devices to use",
     )
     parser.add_argument(
-        "--latency-dispersion", type=float, default=0.7, help="Latency dispersion",
+        "--latency-dispersion",
+        type=float,
+        default=0.7,
+        help="Latency dispersion",
     )
     parser.add_argument(
-        "--var-control", type=float, default=0.1, help="Variance control",
+        "--var-control",
+        type=float,
+        default=0.1,
+        help="Variance control",
     )
 
     # Parse arguments
