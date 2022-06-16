@@ -152,14 +152,15 @@ class ASGDTrainer:
             weight_decay=weight_decay,
         )
 
-        # Training latency is modeled using a normal distribution
+        # The time a device needs to train on a particular set of data
+        # is modeled using a normal distribution
         mu_time_train = 1.0
         sigma_time_train = 0.1
 
-        # Device latency is modeled using the log-normal distribution
+        # Communication latency between the parameter server and workers
+        # is modeled using the log-normal distribution
         mu_time_gradient = 0.0
         sigma_time_gradient = latency_dispersion
-
         mu_time_update = 0.0
         sigma_time_update = latency_dispersion
 
