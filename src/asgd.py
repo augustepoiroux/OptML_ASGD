@@ -215,7 +215,11 @@ class ASGDTrainer:
                 grad_time = time_now + np.random.lognormal(
                     mu_time_gradient, sigma_time_gradient
                 )
-                self.queue.put(PrioritizedGradient(grad_time, grad, train_loss))
+                self.queue.put(
+                    PrioritizedGradient(
+                        grad_time, grad, train_loss, this_emulated_device
+                    )
+                )
 
             elif isinstance(item, PrioritizedGradient):
                 """The global model's parameters get updated with the gradient from this message."""
@@ -295,8 +299,6 @@ class ASGDTrainer:
         return evaluate(model, data_loader, self.criterion, self.torch_device)
 
 
-VAR_CONTROL = 0.1
-
 if __name__ == "__main__":
     # Argparse specification
     parser = argparse.ArgumentParser(description="ASGD for distributed training")
@@ -330,7 +332,7 @@ if __name__ == "__main__":
     LATENCY_DISPERSION = args.latency_dispersion
     MODEL_NAME = args.model
     ALGORITHM = args.algo
-    VAR_CONTROL = VAR_CONTROL
+    VAR_CONTROL = args.var_control
 
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
