@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy as np
 from torchvision import datasets, transforms
 
@@ -8,7 +10,7 @@ class Partition:
     Partition behaves like a list that contains only the selected data points.
     """
 
-    def __init__(self, data: list, indices: list(int)):
+    def __init__(self, data: list, indices: List[int]):
         assert all(0 <= i < len(data) for i in indices)
         self.data = data
         self.indices = indices
@@ -28,7 +30,7 @@ class DataPartitioner:
     """
 
     def __init__(self, data, sizes=[0.7, 0.2, 0.1], seed=1234):
-        assert all(0 <= fraction <= 1 for fraction in sized)
+        assert all(0 <= fraction <= 1 for fraction in sizes)
         assert abs(sum(sizes) - 1) <= 0.001
 
         self.data = data
