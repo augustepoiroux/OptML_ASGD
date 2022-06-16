@@ -24,7 +24,7 @@ from .model import (
     instantiate_model,
 )
 
-# fix seed for reproducibility
+# Fix the seed for reproducibility
 seed = 0
 torch.manual_seed(seed)
 np.random.seed(seed)
@@ -68,8 +68,14 @@ class ASGDTrainer:
         algorithm: str,
         num_device: int,
         model_name: str,
-        torch_device: torch.device = "cpu",
+        torch_device: torch.device = None,
     ):
+        assert algorithm in ("raw", "adjusted", "dcasgd")
+        assert num_device >= 1
+        assert model_name in ("linear", "conv")
+        if torch_device is None:
+            torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.algorithm = algorithm
         self.num_device = num_device
         self.model_name = model_name
@@ -96,7 +102,7 @@ class ASGDTrainer:
     ):
         """Train the model"""
 
-        # Instantiate logger
+        # Instantiate the TensorBoard log writer
         if log:
             algo = (
                 f"{self.algorithm}-{var_control:.2f}"
@@ -111,7 +117,7 @@ class ASGDTrainer:
                 )
             )
 
-        # Create a data loader for the training, validation, and test sets
+        # Create data loaders for the training, validation, and test sets
         train_loaders = [
             torch.utils.data.DataLoader(
                 partition, batch_size=batch_size, shuffle=True, pin_memory=True
@@ -125,7 +131,7 @@ class ASGDTrainer:
             self.test_set, batch_size=batch_size, shuffle=True, pin_memory=True
         )
 
-        # Instantiate an optimizer
+        # Instantiate the optimizer
         optimizer = optim.SGD(
             model.parameters(),
             lr=lr / np.sqrt(self.num_device) if self.algorithm == "adjusted" else lr,
@@ -133,8 +139,7 @@ class ASGDTrainer:
             weight_decay=weight_decay,
         )
 
-        # Define devices characteristics
-        # latency is modeled using a LogNormal distribution
+        # Device latency is modeled using the log-normal distribution
         mu_time_train = 0.0
         sigma_time_train = latency_dispersion
 
@@ -144,73 +149,88 @@ class ASGDTrainer:
         mu_time_update = 0.0
         sigma_time_update = latency_dispersion
 
-        # Global time
-        t = 0
+        # Global timestamp, units are not important
+        time_now = 0
 
-        # copy models on each device
+        # Each device gets its own copy of the initial model ("dcasgd" needs two copies)
         model.to(self.torch_device)
         models = [copy.deepcopy(model) for _ in range(self.num_device)]
-
         if self.algorithm == "dcasgd":
             models_backup = [copy.deepcopy(model) for _ in range(self.num_device)]
 
-        # fill queue with orders to execute
-        for device in range(self.num_device):
-            device_time = t + np.random.lognormal(mu_time_train, sigma_time_train)
-            self.queue.put(PrioritizedDevice(device_time, device))
+        # Initially the queue contains events describing each device getting
+        # its own training data and training on them.
+        for emulated_device in range(self.num_device):
+            device_time = time_now + np.random.lognormal(
+                mu_time_train, sigma_time_train
+            )
+            self.queue.put(PrioritizedDevice(device_time, emulated_device))
 
         n_update = 0
         n_batch = [0 for _ in range(self.num_device)]
         while n_update < nb_updates:
-            # get next item to process
+            # Get the next item to process
             item = self.queue.get()
 
-            t = item.time
+            time_now = item.time
 
             if isinstance(item, PrioritizedDevice):
-                device = item.device
+                """This emulated device has just finished training on its datapoint,
+                and now it sends the gradients it computed back to the main server
+                (after some communication delay), and waits to receive the
+                updated model parameter weights, also after some delay."""
 
-                # select a batch
-                input, target = next(iter(train_loaders[device]))
-                input = input.to(self.torch_device)
+                this_emulated_device = item.device
+
+                # Get data to train on
+                input_, target = next(iter(train_loaders[this_emulated_device]))
+                input_ = input_.to(self.torch_device)
                 target = target.to(self.torch_device)
 
-                # compute gradient
-                models[device].zero_grad()
-                models[device].train()
-                pred = models[device](input)
+                # Compute their gradient
+                models[this_emulated_device].zero_grad()
+                models[this_emulated_device].train()
+                pred = models[this_emulated_device](input_)
                 loss = self.criterion(pred, target)
                 loss.backward()
-                train_loss = loss.item() / len(input)
+                train_loss = loss.item() / len(input_)
 
                 if log:
                     writer.add_scalar(
-                        f"Loss_device/train_{device}", train_loss, n_batch[device],
+                        f"Loss_device/train_{this_emulated_device}",
+                        train_loss,
+                        n_batch[this_emulated_device],
                     )
-                n_batch[device] += 1
 
-                # add gradient to queue
-                grad = []
-                for param in models[device].parameters():
-                    grad.append(param.grad.data.clone())
-                grad_time = t + np.random.lognormal(
+                n_batch[this_emulated_device] += 1
+
+                # Send the gradient back to the main server, but after some time
+                grad = [
+                    param.grad.data.clone()
+                    for param in models[this_emulated_device].parameters()
+                ]
+                grad_time = time_now + np.random.lognormal(
                     mu_time_gradient, sigma_time_gradient
                 )
                 self.queue.put(PrioritizedGradient(grad_time, grad, train_loss))
 
-                # add model update to queue
-                model_update_time = t + np.random.lognormal(
+                # Update model on this device, but after some time
+                model_update_time = time_now + np.random.lognormal(
                     mu_time_update, sigma_time_update
                 )
-                self.queue.put(PrioritizedModelUpdate(model_update_time, device))
+                self.queue.put(
+                    PrioritizedModelUpdate(model_update_time, this_emulated_device)
+                )
 
             elif isinstance(item, PrioritizedGradient):
-                # update parameter server model with gradient
+                """The global model's parameters get updated with the gradient from this message."""
                 model.zero_grad()
                 grad = item.gradient
                 if self.algorithm == "dcasgd":
                     for param, param_backup, grad_param in zip(
-                        model.parameters(), models_backup[device].parameters(), grad,
+                        model.parameters(),
+                        models_backup[this_emulated_device].parameters(),
+                        grad,
                     ):
                         with torch.no_grad():
                             compensated_grad = (
@@ -221,16 +241,18 @@ class ASGDTrainer:
                                 * (param - param_backup)
                             )
                         param.grad = compensated_grad
-                else:
+                elif self.algorithm in ("raw", "adjusted"):
                     for param, grad_param in zip(model.parameters(), grad):
                         param.grad = grad_param
+                else:
+                    assert False, f"Unknown algorithm type: {str(self.algorithm)}"
                 optimizer.step()
 
                 if log:
                     writer.add_scalar("Loss/train", item.loss, n_update)
                 n_update += 1
 
-                # evaluate model on validation set
+                # Evaluate the model on validation data according to `val_every_n_updates`
                 if n_update % val_every_n_updates == 0:
                     val_loss, val_acc = self.evaluate(model, val_loader)
                     if log:
@@ -243,15 +265,19 @@ class ASGDTrainer:
                     )
 
             elif isinstance(item, PrioritizedModelUpdate):
-                # update model on device
-                device = item.device
-                models[device] = copy.deepcopy(model)
+                """Model on this specific device gets replaced with the global model"""
+                models[item.device] = copy.deepcopy(model)
                 if self.algorithm == "dcasgd":
-                    models_backup[device] = copy.deepcopy(model)
-                train_time = t + np.random.lognormal(mu_time_train, sigma_time_train)
-                self.queue.put(PrioritizedDevice(train_time, device))
+                    models_backup[item.device] = copy.deepcopy(model)
+                train_time = time_now + np.random.lognormal(
+                    mu_time_train, sigma_time_train
+                )
+                self.queue.put(PrioritizedDevice(train_time, item.device))
 
-        # evaluate model on test set
+            else:
+                assert False, "Unknown message on the queue."
+
+        # Evaluate the model on test data
         test_loss, test_acc = self.evaluate(model, test_loader)
         if log:
             writer.add_scalar("Loss/test", test_loss, n_update)
@@ -263,14 +289,16 @@ class ASGDTrainer:
         return evaluate(model, data_loader, self.criterion, self.torch_device)
 
 
+VAR_CONTROL = 0.1
+
 if __name__ == "__main__":
-    # argparse
+    # Argparse specification
     parser = argparse.ArgumentParser(description="ASGD for distributed training")
     parser.add_argument(
         "--algo",
         type=str,
         default="raw",
-        help="algorithm to use",
+        help="Algorithm to use",
         choices=["raw", "adjusted", "dcasgd"],
     )
     parser.add_argument(
@@ -290,19 +318,16 @@ if __name__ == "__main__":
         "--var-control", type=float, default=0.1, help="Variance control",
     )
 
-    args = parser.parse_args()
-
     # Parse arguments
+    args = parser.parse_args()
     NUM_DEVICE = args.num_device
     LATENCY_DISPERSION = args.latency_dispersion
     MODEL_NAME = args.model
     ALGORITHM = args.algo
-    VAR_CONTROL = args.var_control
+    VAR_CONTROL = VAR_CONTROL
 
-    # Get device
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Instantiate a model
     MODEL = instantiate_model(MODEL_NAME).to(TORCH_DEVICE)
 
     trainer = ASGDTrainer(ALGORITHM, NUM_DEVICE, MODEL_NAME, TORCH_DEVICE)
