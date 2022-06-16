@@ -91,16 +91,22 @@ class ASGDTrainer:
         weight_decay: float = 0.0,
         lr: float = LR,
         batch_size: int = BATCH_SIZE,
+        var_control: float = 0.1,  # DC-ASGD parameter
         log=True,
     ):
         """Train the model"""
 
         # Instantiate logger
         if log:
+            algo = (
+                f"{self.algorithm}-{var_control:.2f}"
+                if self.algorithm == "dcasgd"
+                else self.algorithm
+            )
             writer = SummaryWriter(
                 log_dir=os.path.join(
                     ROOT_DIR,
-                    f"runs/asgd_{self.algorithm}-algo_{self.model_name}_{self.num_device}"
+                    f"runs/asgd_{algo}-algo_{self.model_name}_{self.num_device}"
                     f"-devices_{latency_dispersion:.2f}-latency_{time.time()}",
                 )
             )
@@ -209,7 +215,7 @@ class ASGDTrainer:
                         with torch.no_grad():
                             compensated_grad = (
                                 grad_param
-                                + VAR_CONTROL
+                                + var_control
                                 * grad_param
                                 * grad_param
                                 * (param - param_backup)
@@ -305,5 +311,6 @@ if __name__ == "__main__":
         nb_updates=N_EPOCHS * 329,
         val_every_n_updates=329,
         latency_dispersion=LATENCY_DISPERSION,
+        var_control=VAR_CONTROL,
         # log=False,
     )
