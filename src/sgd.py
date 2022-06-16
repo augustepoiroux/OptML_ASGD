@@ -6,17 +6,13 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import datasets, transforms
 
 from .data import DataPartitioner
 from .models import (
-    BATCH_SIZE,
-    LR,
-    N_EPOCHS,
     ROOT_DIR,
     evaluate,
-    instantiate_MNIST_model,
-    instantiate_CIFAR10_model,
+    MNIST_Model,
+    CIFAR10_Model,
 )
 
 # fix seed for reproducibility
@@ -31,26 +27,15 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Instantiate a model
-    model_name = "conv"
-    model = instantiate_CIFAR10_model(model_name, device)
+    neural_network_model = CIFAR10_Model()
+    BATCH_SIZE = neural_network_model.batch_size()
+    N_EPOCHS = neural_network_model.num_epochs()
+    LR = neural_network_model.learning_rate()
 
-    # Load data
-    '''dataset = datasets.MNIST(
-        os.path.join(ROOT_DIR, "data"),
-        train=True,
-        download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-        ),
-    )'''
-    dataset = datasets.CIFAR10(
-        os.path.join(ROOT_DIR, "data"),
-        train=True,
-        download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-        ),
-    )
+    model_version = "conv"
+    model = neural_network_model.fresh_model_instance(model_version, device)
+
+    dataset = neural_network_model.dataset()
 
     # Partition the dataset into training, validation, and test sets
     partitioner = DataPartitioner(dataset, [0.7, 0.2, 0.1], seed)
@@ -75,7 +60,7 @@ if __name__ == "__main__":
 
     # Instantiates tensorboard
     writer = SummaryWriter(
-        log_dir=os.path.join(ROOT_DIR, f"runs/sgd_{model_name}_{time.time()}")
+        log_dir=os.path.join(ROOT_DIR, f"runs/sgd_{model_version}_{time.time()}")
     )
 
     # Train the model
