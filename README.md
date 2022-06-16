@@ -16,4 +16,6 @@ src/asgd.py: emulates an ASGD training algorithm (WIP)
 
 src/data.py: implement some data loading utilities
 
+src/models.py: implement some models and associated datasets
+
 Report: <https://www.overleaf.com/4353275819wkppbyzgcftk>
