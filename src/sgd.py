@@ -32,6 +32,8 @@ if __name__ == "__main__":
     BATCH_SIZE = neural_network_model.batch_size()
     N_EPOCHS = neural_network_model.num_epochs()
     LR = neural_network_model.learning_rate()
+    # MOMENTUM = None
+    MOMENTUM = 0.9
 
     model_version = "conv"
     model = neural_network_model.fresh_model_instance(model_version, device)
@@ -57,13 +59,19 @@ if __name__ == "__main__":
 
     # Create a loss and an optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=LR)
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=LR, momentum=MOMENTUM if MOMENTUM else 0
+    )
 
     # Instantiates tensorboard
+    str_momentum = ""
+    if MOMENTUM:
+        str_momentum = f"_{MOMENTUM:.2f}-momentum"
     writer = SummaryWriter(
         log_dir=os.path.join(
             ROOT_DIR,
-            f"runs/{neural_network_model.name()}/sgd_{model_version}_{time.time()}",
+            f"runs/{neural_network_model.name()}/"
+            f"sgd{str_momentum}_{model_version}_{time.time()}",
         )
     )
 

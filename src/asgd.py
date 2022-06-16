@@ -121,11 +121,15 @@ class ASGDTrainer:
                 if self.algorithm == "dcasgd"
                 else self.algorithm
             )
+            str_momentum = ""
+            if MOMENTUM:
+                str_momentum = f"_{MOMENTUM:.2f}-momentum"
             writer = SummaryWriter(
                 log_dir=os.path.join(
                     ROOT_DIR,
                     f"runs/{self.neural_network_model.name()}/"
-                    f"asgd_{algo}-algo_{self.model_name}_{self.num_device}"
+                    f"asgd{str_momentum}_{algo}-algo"
+                    f"_{self.model_name}_{self.num_device}"
                     f"-devices_{latency_dispersion:.2f}-latency_{time.time()}",
                 )
             )
@@ -145,6 +149,8 @@ class ASGDTrainer:
         )
 
         # Instantiate the optimizer
+        if not momentum:
+            momentum = 0.0
         optimizer = optim.SGD(
             model.parameters(),
             lr=lr / np.sqrt(self.num_device) if self.algorithm == "adjusted" else lr,
@@ -345,6 +351,9 @@ if __name__ == "__main__":
         help="Dataset to use",
         choices=["mnist", "cifar10"],
     )
+    parser.add_argument(
+        "--momentum", type=float, default=None, help="Latency dispersion",
+    )
 
     # Parse arguments
     args = parser.parse_args()
@@ -354,6 +363,7 @@ if __name__ == "__main__":
     ALGORITHM = args.algo
     VAR_CONTROL = args.var_control
     DATASET = args.dataset
+    MOMENTUM = args.momentum
 
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -375,5 +385,6 @@ if __name__ == "__main__":
         val_every_n_updates=329,
         latency_dispersion=LATENCY_DISPERSION,
         var_control=VAR_CONTROL,
-        # log=False,
+        momentum=MOMENTUM,
+        log=False,
     )
