@@ -15,13 +15,13 @@ from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
 from .data import partition_mnist
-from .model import (
+from .models import (
     BATCH_SIZE,
     LR,
     N_EPOCHS,
     ROOT_DIR,
     evaluate,
-    instantiate_model,
+    instantiate_MNIST_model,
 )
 
 # Fix the seed for reproducibility
@@ -351,7 +351,7 @@ if __name__ == "__main__":
 
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    MODEL = instantiate_model(MODEL_NAME).to(TORCH_DEVICE)
+    MODEL = instantiate_MNIST_model(MODEL_NAME).to(TORCH_DEVICE)
 
     trainer = ASGDTrainer(ALGORITHM, NUM_DEVICE, MODEL_NAME, TORCH_DEVICE)
     trainer.train(

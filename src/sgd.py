@@ -9,13 +9,14 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import datasets, transforms
 
 from .data import DataPartitioner
-from .model import (
+from .models import (
     BATCH_SIZE,
     LR,
     N_EPOCHS,
     ROOT_DIR,
     evaluate,
-    instantiate_model,
+    instantiate_MNIST_model,
+    instantiate_CIFAR10_model,
 )
 
 # fix seed for reproducibility
@@ -30,16 +31,24 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Instantiate a model
-    model_name = "linear"
-    model = instantiate_model(model_name, device)
+    model_name = "conv"
+    model = instantiate_CIFAR10_model(model_name, device)
 
     # Load data
-    dataset = datasets.MNIST(
+    '''dataset = datasets.MNIST(
         os.path.join(ROOT_DIR, "data"),
         train=True,
         download=True,
         transform=transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        ),
+    )'''
+    dataset = datasets.CIFAR10(
+        os.path.join(ROOT_DIR, "data"),
+        train=True,
+        download=True,
+        transform=transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         ),
     )
 
