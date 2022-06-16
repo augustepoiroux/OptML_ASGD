@@ -45,9 +45,9 @@ if __name__ == "__main__":
 
     # Partition the dataset into training, validation, and test sets
     partitioner = DataPartitioner(dataset, [0.7, 0.2, 0.1], seed)
-    train_set = partitioner.use(0)
-    val_set = partitioner.use(1)
-    test_set = partitioner.use(2)
+    train_set = partitioner.get_partition(0)
+    val_set = partitioner.get_partition(1)
+    test_set = partitioner.get_partition(2)
 
     # Create a data loader for the training, validation, and test sets
     train_loader = torch.utils.data.DataLoader(

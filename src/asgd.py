@@ -60,7 +60,7 @@ class PrioritizedModelUpdate(PrioritizedItem):
 
 
 class ASGDTrainer:
-    """ Implement a fake ASGD trainer running on 1 device
+    """Implement a fake ASGD trainer running on 1 device
     emulating the distributed training with a parameter server."""
 
     def __init__(
@@ -95,7 +95,7 @@ class ASGDTrainer:
         batch_size: int = BATCH_SIZE,
         log=True,
     ):
-        """ Train the model """
+        """Train the model"""
 
         # Instantiate logger
         if log:
@@ -124,9 +124,7 @@ class ASGDTrainer:
         # Instantiate an optimizer
         optimizer = optim.SGD(
             model.parameters(),
-            lr=lr / np.sqrt(self.num_device)
-            if self.algorithm == "adjusted"
-            else lr,
+            lr=lr / np.sqrt(self.num_device) if self.algorithm == "adjusted" else lr,
             momentum=momentum,
             weight_decay=weight_decay,
         )
@@ -150,15 +148,11 @@ class ASGDTrainer:
         models = [copy.deepcopy(model) for _ in range(self.num_device)]
 
         if self.algorithm == "dcasgd":
-            models_backup = [
-                copy.deepcopy(model) for _ in range(self.num_device)
-            ]
+            models_backup = [copy.deepcopy(model) for _ in range(self.num_device)]
 
         # fill queue with orders to execute
         for device in range(self.num_device):
-            device_time = t + np.random.lognormal(
-                mu_time_train, sigma_time_train
-            )
+            device_time = t + np.random.lognormal(mu_time_train, sigma_time_train)
             self.queue.put(PrioritizedDevice(device_time, device))
 
         n_update = 0
@@ -200,17 +194,13 @@ class ASGDTrainer:
                 grad_time = t + np.random.lognormal(
                     mu_time_gradient, sigma_time_gradient
                 )
-                self.queue.put(
-                    PrioritizedGradient(grad_time, grad, train_loss)
-                )
+                self.queue.put(PrioritizedGradient(grad_time, grad, train_loss))
 
                 # add model update to queue
                 model_update_time = t + np.random.lognormal(
                     mu_time_update, sigma_time_update
                 )
-                self.queue.put(
-                    PrioritizedModelUpdate(model_update_time, device)
-                )
+                self.queue.put(PrioritizedModelUpdate(model_update_time, device))
 
             elif isinstance(item, PrioritizedGradient):
                 # update parameter server model with gradient
@@ -258,9 +248,7 @@ class ASGDTrainer:
                 models[device] = copy.deepcopy(model)
                 if self.algorithm == "dcasgd":
                     models_backup[device] = copy.deepcopy(model)
-                train_time = t + np.random.lognormal(
-                    mu_time_train, sigma_time_train
-                )
+                train_time = t + np.random.lognormal(mu_time_train, sigma_time_train)
                 self.queue.put(PrioritizedDevice(train_time, device))
 
         # evaluate model on test set
@@ -271,17 +259,13 @@ class ASGDTrainer:
             writer.flush()
         print(f"test loss {test_loss:.4f}\ttest acc {test_acc *100:.3f}%")
 
-    def evaluate(
-        self, model: nn.Module, data_loader: torch.utils.data.DataLoader
-    ):
+    def evaluate(self, model: nn.Module, data_loader: torch.utils.data.DataLoader):
         return evaluate(model, data_loader, self.criterion, self.torch_device)
 
 
 if __name__ == "__main__":
     # argparse
-    parser = argparse.ArgumentParser(
-        description="ASGD for distributed training"
-    )
+    parser = argparse.ArgumentParser(description="ASGD for distributed training")
     parser.add_argument(
         "--algo",
         type=str,
@@ -297,7 +281,10 @@ if __name__ == "__main__":
         choices=["conv", "linear"],
     )
     parser.add_argument(
-        "--num-device", type=int, default=1, help="Number of devices to use",
+        "--num-device",
+        type=int,
+        default=1,
+        help="Number of devices to use",
     )
     parser.add_argument(
         "--latency-dispersion",

@@ -4,36 +4,48 @@ from torchvision import datasets, transforms
 
 
 class Partition:
-    """ Dataset partitioning helper """
+    """
+    Represents a subset of datapoints (selected by `indices`) from some larger dataset `data`.
+    Partition behaves like a list that contains only the selected data points.
+    """
 
-    def __init__(self, data, index):
+    def __init__(self, data: list, indices: list(int)):
+        assert all(0 <= i < len(data) for i in indices)
         self.data = data
-        self.index = index
+        self.indices = indices
 
     def __len__(self):
-        return len(self.index)
+        return len(self.indices)
 
-    def __getitem__(self, index):
-        data_idx = self.index[index]
-        return self.data[data_idx]
+    def __getitem__(self, idx):
+        return self.data[self.indices[idx]]
 
 
 class DataPartitioner:
+    """
+    DataPartitioner receives a list of datapoints and partitions them according to `sizes`,
+    a list of fractions adding to 1 describing relative sized of the resulting partitions.
+    Partitions are accessible by self.get_partition() and indexed by 0..len(sizes)-1.
+    """
+
     def __init__(self, data, sizes=[0.7, 0.2, 0.1], seed=1234):
+        assert all(0 <= fraction <= 1 for fraction in sized)
+        assert abs(sum(sizes) - 1) <= 0.001
+
         self.data = data
         self.partitions = []
         data_len = len(data)
-        indexes = [x for x in range(0, data_len)]
+        indices = list(range(0, data_len))
 
         np.random.seed(seed)
-        np.random.shuffle(indexes)
+        np.random.shuffle(indices)
 
-        for frac in sizes:
-            part_len = int(frac * data_len)
-            self.partitions.append(indexes[0:part_len])
-            indexes = indexes[part_len:]
+        for fraction in sizes:
+            part_len = int(fraction * data_len)
+            self.partitions.append(indices[0:part_len])
+            indices = indices[part_len:]
 
-    def use(self, partition):
+    def get_partition(self, partition):
         return Partition(self.data, self.partitions[partition])
 
 
@@ -44,7 +56,15 @@ def partition_mnist(
     test_size=0.1,
     seed=1234,
 ):
-    """ Partitioning MNIST """
+    """
+    Partitioning the MNIST data.  Returns a 3-tupe of:
+      - the list of training partitions,
+      - the validation partition, and
+      - the test partition.
+    """
+    assert all(0 <= fraction <= 1 for fraction in [train_size, val_size, test_size])
+    assert abs(sum([train_size, val_size, test_size]) - 1) <= 0.001
+
     dataset = datasets.MNIST(
         "./data",
         train=True,
@@ -53,15 +73,16 @@ def partition_mnist(
             [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
         ),
     )
+
     partition_sizes = [
         train_size / num_train_partitions for _ in range(num_train_partitions)
     ] + [val_size, test_size]
     partitioner = DataPartitioner(dataset, partition_sizes, seed)
     train_partitions = [
-        partitioner.use(i) for i in range(num_train_partitions)
+        partitioner.get_partition(i) for i in range(num_train_partitions)
     ]
     return (
         train_partitions,
-        partitioner.use(num_train_partitions),
-        partitioner.use(num_train_partitions + 1),
+        partitioner.get_partition(num_train_partitions),
+        partitioner.get_partition(num_train_partitions + 1),
     )
