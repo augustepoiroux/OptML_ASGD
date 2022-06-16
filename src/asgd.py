@@ -62,8 +62,11 @@ class PrioritizedModelUpdate(PrioritizedItem):
 
 
 class ASGDTrainer:
-    """Implement a fake ASGD trainer running on 1 device
-    emulating the distributed training with a parameter server."""
+    """This class simulates a network of devices performing asynchronous SGD.
+    Topology is star-shaped, with one parameter server holding the authoritative
+    knowledge on the model, and a number of worker devices, each communicating
+    only with the server, computing gradients and sending them back to the
+    parameter server, receiving an updated model parameters back."""
 
     def __init__(
         self,
@@ -83,9 +86,11 @@ class ASGDTrainer:
         self.model_name = model_name
         self.torch_device = torch_device
         self.queue: PriorityQueue[PrioritizedItem] = PriorityQueue()
-        (self.train_partitions, self.val_set, self.test_set,) = partition_mnist(
-            num_device, seed=seed
-        )
+        (
+            self.train_partitions,
+            self.val_set,
+            self.test_set,
+        ) = partition_mnist(num_device, seed=seed)
 
         self.criterion = nn.CrossEntropyLoss()
 
@@ -245,6 +250,7 @@ class ASGDTrainer:
                         param.grad = grad_param
                 else:
                     assert False, f"Unknown algorithm type: {str(self.algorithm)}"
+
                 optimizer.step()
 
                 if log:
@@ -287,7 +293,7 @@ class ASGDTrainer:
             else:
                 assert False, "Unknown message on the queue."
 
-        # Evaluate the model on test data
+        # The final evaluation on test data
         test_loss, test_acc = self.evaluate(model, test_loader)
         if log:
             writer.add_scalar("Loss/test", test_loss, n_update)
@@ -317,13 +323,22 @@ if __name__ == "__main__":
         choices=["conv", "linear"],
     )
     parser.add_argument(
-        "--num-device", type=int, default=1, help="Number of devices to use",
+        "--num-device",
+        type=int,
+        default=1,
+        help="Number of devices to use",
     )
     parser.add_argument(
-        "--latency-dispersion", type=float, default=0.7, help="Latency dispersion",
+        "--latency-dispersion",
+        type=float,
+        default=0.7,
+        help="Latency dispersion",
     )
     parser.add_argument(
-        "--var-control", type=float, default=0.1, help="Variance control",
+        "--var-control",
+        type=float,
+        default=0.1,
+        help="Variance control",
     )
 
     # Parse arguments
