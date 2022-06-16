@@ -27,6 +27,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Instantiate a model
+    # neural_network_model = MNIST_Model()
     neural_network_model = CIFAR10_Model()
     BATCH_SIZE = neural_network_model.batch_size()
     N_EPOCHS = neural_network_model.num_epochs()
@@ -60,7 +61,10 @@ if __name__ == "__main__":
 
     # Instantiates tensorboard
     writer = SummaryWriter(
-        log_dir=os.path.join(ROOT_DIR, f"runs/sgd_{model_version}_{time.time()}")
+        log_dir=os.path.join(
+            ROOT_DIR,
+            f"runs/{neural_network_model.name()}/sgd_{model_version}_{time.time()}",
+        )
     )
 
     # Train the model

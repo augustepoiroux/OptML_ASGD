@@ -124,7 +124,8 @@ class ASGDTrainer:
             writer = SummaryWriter(
                 log_dir=os.path.join(
                     ROOT_DIR,
-                    f"runs/asgd_{algo}-algo_{self.model_name}_{self.num_device}"
+                    f"runs/{self.neural_network_model.name()}/"
+                    f"asgd_{algo}-algo_{self.model_name}_{self.num_device}"
                     f"-devices_{latency_dispersion:.2f}-latency_{time.time()}",
                 )
             )
@@ -328,22 +329,20 @@ if __name__ == "__main__":
         choices=["conv", "linear"],
     )
     parser.add_argument(
-        "--num-device",
-        type=int,
-        default=1,
-        help="Number of devices to use",
+        "--num-device", type=int, default=1, help="Number of devices to use",
     )
     parser.add_argument(
-        "--latency-dispersion",
-        type=float,
-        default=0.7,
-        help="Latency dispersion",
+        "--latency-dispersion", type=float, default=0.7, help="Latency dispersion",
     )
     parser.add_argument(
-        "--var-control",
-        type=float,
-        default=0.1,
-        help="Variance control",
+        "--var-control", type=float, default=0.1, help="Variance control",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist",
+        help="Dataset to use",
+        choices=["mnist", "cifar10"],
     )
 
     # Parse arguments
@@ -353,10 +352,16 @@ if __name__ == "__main__":
     MODEL_NAME = args.model
     ALGORITHM = args.algo
     VAR_CONTROL = args.var_control
+    DATASET = args.dataset
 
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    neural_network_model = CIFAR10_Model()
+    if DATASET == "mnist":
+        neural_network_model = MNIST_Model()
+    elif DATASET == "cifar10":
+        neural_network_model = CIFAR10_Model()
+    else:
+        assert False, f"Unknown dataset: {DATASET}"
     N_EPOCHS = neural_network_model.num_epochs()
     MODEL = neural_network_model.fresh_model_instance(MODEL_NAME, TORCH_DEVICE)
 

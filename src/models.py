@@ -28,6 +28,11 @@ class NetworkModel(ABC):
     def learning_rate(cls):
         pass
 
+    @classmethod
+    @abstractmethod
+    def name(self):
+        pass
+
     @abstractmethod
     def fresh_model_instance(self, model_version: str, device: Any = None):
         pass
@@ -77,11 +82,15 @@ class MNIST_Model(NetworkModel):
 
     @classmethod
     def batch_size(cls):
-        return 120
+        return 128
 
     @classmethod
     def learning_rate(cls):
         return 0.01
+
+    @classmethod
+    def name(self):
+        return "mnist"
 
     def fresh_model_instance(self, model_version: str, device: Any = None):
         assert model_version in (
@@ -125,11 +134,15 @@ class CIFAR10_Model(NetworkModel):
 
     @classmethod
     def batch_size(cls):
-        return 120
+        return 128
 
     @classmethod
     def learning_rate(cls):
         return 0.01
+
+    @classmethod
+    def name(self):
+        return "cifar10"
 
     def fresh_model_instance(self, model_version: str, device: Any = None):
         assert model_version in ("linear", "conv")
