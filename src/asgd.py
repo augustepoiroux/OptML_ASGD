@@ -52,11 +52,13 @@ class PrioritizedDevice(PrioritizedItem):
 class PrioritizedGradient(PrioritizedItem):
     gradient: Any = field(compare=False)
     loss: float = field(compare=False)
+    device: int = field(compare=False)
 
 
 @dataclass(order=True)
 class PrioritizedModelUpdate(PrioritizedItem):
     device: int = field(compare=False)
+    model: Any = field(compare=False)
 
 
 class ASGDTrainer:
@@ -139,10 +141,11 @@ class ASGDTrainer:
             weight_decay=weight_decay,
         )
 
-        # Device latency is modeled using the log-normal distribution
-        mu_time_train = 0.0
-        sigma_time_train = latency_dispersion
+        # Training latency is modeled using a normal distribution
+        mu_time_train = 1.0
+        sigma_time_train = 0.1
 
+        # Device latency is modeled using the log-normal distribution
         mu_time_gradient = 0.0
         sigma_time_gradient = latency_dispersion
 
@@ -214,14 +217,6 @@ class ASGDTrainer:
                 )
                 self.queue.put(PrioritizedGradient(grad_time, grad, train_loss))
 
-                # Update model on this device, but after some time
-                model_update_time = time_now + np.random.lognormal(
-                    mu_time_update, sigma_time_update
-                )
-                self.queue.put(
-                    PrioritizedModelUpdate(model_update_time, this_emulated_device)
-                )
-
             elif isinstance(item, PrioritizedGradient):
                 """The global model's parameters get updated with the gradient from this message."""
                 model.zero_grad()
@@ -250,6 +245,15 @@ class ASGDTrainer:
 
                 if log:
                     writer.add_scalar("Loss/train", item.loss, n_update)
+
+                # Update model on the device, but after some time
+                model_update_time = time_now + np.random.lognormal(
+                    mu_time_update, sigma_time_update
+                )
+                self.queue.put(
+                    PrioritizedModelUpdate(model_update_time, item.device, model)
+                )
+
                 n_update += 1
 
                 # Evaluate the model on validation data according to `val_every_n_updates`
@@ -266,11 +270,11 @@ class ASGDTrainer:
 
             elif isinstance(item, PrioritizedModelUpdate):
                 """Model on this specific device gets replaced with the global model"""
-                models[item.device] = copy.deepcopy(model)
+                models[item.device] = copy.deepcopy(item.model)
                 if self.algorithm == "dcasgd":
-                    models_backup[item.device] = copy.deepcopy(model)
-                train_time = time_now + np.random.lognormal(
-                    mu_time_train, sigma_time_train
+                    models_backup[item.device] = copy.deepcopy(item.model)
+                train_time = time_now + max(
+                    0, np.random.normal(mu_time_train, sigma_time_train)
                 )
                 self.queue.put(PrioritizedDevice(train_time, item.device))
 
