@@ -4,11 +4,10 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision import datasets, transforms
 
-N_EPOCHS = 30
-BATCH_SIZE = 128
-LR = 0.01
+from .data import DataPartitioner, Partition
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -36,6 +35,39 @@ class NetworkModel(ABC):
     @abstractmethod
     def dataset(self):
         pass
+
+    def partition_dataset(
+        self,
+        num_train_partitions,
+        train_size=0.7,
+        val_size=0.2,
+        test_size=0.1,
+        seed=1234,
+    ):
+        """
+        Partitions a list of datapoints. Returns a 3-tuple of:
+          - the list of training partitions (list of lists),
+          - the validation partition, and
+          - the test partition.
+        Each partition is a list of datapoints.
+        """
+        assert all(0 <= fraction <= 1 for fraction in [train_size, val_size, test_size])
+        assert abs(sum([train_size, val_size, test_size]) - 1) <= 0.001
+
+        dataset = self.dataset()
+
+        partition_sizes = [
+            train_size / num_train_partitions for _ in range(num_train_partitions)
+        ] + [val_size, test_size]
+        partitioner = DataPartitioner(dataset, partition_sizes, seed)
+        train_partitions = [
+            partitioner.get_partition(i) for i in range(num_train_partitions)
+        ]
+        return (
+            train_partitions,
+            partitioner.get_partition(num_train_partitions),
+            partitioner.get_partition(num_train_partitions + 1),
+        )
 
 
 class MNIST_Model(NetworkModel):
@@ -149,7 +181,7 @@ def evaluate(
     model: nn.Module,
     data_loader: torch.utils.data.DataLoader,
     criterion: nn.Module,
-    device: None,
+    device=None,
 ):
     """Evaluate the model on the given data loader."""
     if device is None:

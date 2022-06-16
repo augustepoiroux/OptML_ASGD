@@ -1,7 +1,5 @@
 from typing import List
-
 import numpy as np
-from torchvision import datasets, transforms
 
 
 class Partition:
@@ -48,42 +46,3 @@ class DataPartitioner:
 
     def get_partition(self, partition):
         return Partition(self.data, self.partitions[partition])
-
-
-def partition_mnist(
-    num_train_partitions,
-    train_size=0.7,
-    val_size=0.2,
-    test_size=0.1,
-    seed=1234,
-):
-    """
-    Partitioning the MNIST data.  Returns a 3-tuple of:
-      - the list of training partitions,
-      - the validation partition, and
-      - the test partition.
-    """
-    assert all(0 <= fraction <= 1 for fraction in [train_size, val_size, test_size])
-    assert abs(sum([train_size, val_size, test_size]) - 1) <= 0.001
-
-    dataset = datasets.MNIST(
-        "./data",
-        train=True,
-        download=True,
-        transform=transforms.Compose(
-            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-        ),
-    )
-
-    partition_sizes = [
-        train_size / num_train_partitions for _ in range(num_train_partitions)
-    ] + [val_size, test_size]
-    partitioner = DataPartitioner(dataset, partition_sizes, seed)
-    train_partitions = [
-        partitioner.get_partition(i) for i in range(num_train_partitions)
-    ]
-    return (
-        train_partitions,
-        partitioner.get_partition(num_train_partitions),
-        partitioner.get_partition(num_train_partitions + 1),
-    )

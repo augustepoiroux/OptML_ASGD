@@ -14,14 +14,12 @@ import torch.nn as nn
 from torch import optim
 from torch.utils.tensorboard import SummaryWriter
 
-from .data import partition_mnist
 from .models import (
-    BATCH_SIZE,
-    LR,
-    N_EPOCHS,
     ROOT_DIR,
     evaluate,
-    instantiate_MNIST_model,
+    NetworkModel,
+    MNIST_Model,
+    CIFAR10_Model,
 )
 
 # Fix the seed for reproducibility
@@ -70,17 +68,23 @@ class ASGDTrainer:
 
     def __init__(
         self,
+        nn_model: NetworkModel,
         algorithm: str,
         num_device: int,
         model_name: str,
         torch_device: torch.device = None,
     ):
-        assert algorithm in ("raw", "adjusted", "dcasgd")
+        assert algorithm in (
+            "raw",
+            "adjusted",
+            "dcasgd",
+        ), f"Unknown algorithm type >{algorithm}<"
         assert num_device >= 1
         assert model_name in ("linear", "conv")
         if torch_device is None:
             torch_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.neural_network_model = nn_model
         self.algorithm = algorithm
         self.num_device = num_device
         self.model_name = model_name
@@ -90,7 +94,7 @@ class ASGDTrainer:
             self.train_partitions,
             self.val_set,
             self.test_set,
-        ) = partition_mnist(num_device, seed=seed)
+        ) = nn_model.partition_dataset(num_device, seed=seed)
 
         self.criterion = nn.CrossEntropyLoss()
 
@@ -102,12 +106,13 @@ class ASGDTrainer:
         latency_dispersion: float,
         momentum: float = 0.0,
         weight_decay: float = 0.0,
-        lr: float = LR,
-        batch_size: int = BATCH_SIZE,
         var_control: float = 0.1,  # DC-ASGD parameter
         log=True,
     ):
         """Train the model"""
+
+        lr = self.neural_network_model.learning_rate()
+        batch_size = self.neural_network_model.batch_size()
 
         # Instantiate the TensorBoard log writer
         if log:
@@ -351,9 +356,13 @@ if __name__ == "__main__":
 
     TORCH_DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    MODEL = instantiate_MNIST_model(MODEL_NAME).to(TORCH_DEVICE)
+    neural_network_model = CIFAR10_Model()
+    N_EPOCHS = neural_network_model.num_epochs()
+    MODEL = neural_network_model.fresh_model_instance(MODEL_NAME, TORCH_DEVICE)
 
-    trainer = ASGDTrainer(ALGORITHM, NUM_DEVICE, MODEL_NAME, TORCH_DEVICE)
+    trainer = ASGDTrainer(
+        neural_network_model, ALGORITHM, NUM_DEVICE, MODEL_NAME, TORCH_DEVICE
+    )
     trainer.train(
         model=MODEL,
         nb_updates=N_EPOCHS * 329,
