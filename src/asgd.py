@@ -386,5 +386,5 @@ if __name__ == "__main__":
         latency_dispersion=LATENCY_DISPERSION,
         var_control=VAR_CONTROL,
         momentum=MOMENTUM,
-        log=False,
+        # log=False,
     )
