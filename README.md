@@ -1,5 +1,11 @@
 # OptML_ASGD
 
+## Requirements
+
+    pip install -r requirements.txt
+
+## Scripts
+
 src/sgd.py: implement a classic sequential SGD training algorithm = reference/baseline
 
     python -m src.sgd
