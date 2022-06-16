@@ -251,7 +251,9 @@ class ASGDTrainer:
                     mu_time_update, sigma_time_update
                 )
                 self.queue.put(
-                    PrioritizedModelUpdate(model_update_time, item.device, model)
+                    PrioritizedModelUpdate(
+                        model_update_time, item.device, copy.deepcopy(model)
+                    )
                 )
 
                 n_update += 1
