@@ -10,7 +10,7 @@ class Partition:
     Partition behaves like a list that contains only the selected data points.
     """
 
-    def __init__(self, data: list, indices: List[int]):
+    def __init__(self, data: list, indices: list[int]):
         assert all(0 <= i < len(data) for i in indices)
         self.data = data
         self.indices = indices
