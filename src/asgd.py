@@ -352,7 +352,7 @@ if __name__ == "__main__":
         choices=["mnist", "cifar10"],
     )
     parser.add_argument(
-        "--momentum", type=float, default=None, help="Latency dispersion",
+        "--momentum", type=float, default=None, help="Momentum",
     )
 
     # Parse arguments

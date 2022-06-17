@@ -1,3 +1,4 @@
+import argparse
 import os
 import random
 import time
@@ -8,12 +9,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from .data import DataPartitioner
-from .models import (
-    ROOT_DIR,
-    evaluate,
-    MNIST_Model,
-    CIFAR10_Model,
-)
+from .models import ROOT_DIR, CIFAR10_Model, MNIST_Model, evaluate
 
 # fix seed for reproducibility
 seed = 0
@@ -23,19 +19,47 @@ random.seed(seed)
 
 
 if __name__ == "__main__":
+    # Argparse specification
+    parser = argparse.ArgumentParser(description="SGD")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="conv",
+        help="Model to use",
+        choices=["conv", "linear"],
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="mnist",
+        help="Dataset to use",
+        choices=["mnist", "cifar10"],
+    )
+    parser.add_argument(
+        "--momentum", type=float, default=None, help="Momentum",
+    )
+
+    # Parse arguments
+    args = parser.parse_args()
+    MODEL_NAME = args.model
+    DATASET = args.dataset
+    MOMENTUM = args.momentum
+
     # Get torch device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Instantiate a model
-    # neural_network_model = MNIST_Model()
-    neural_network_model = CIFAR10_Model()
+    if DATASET == "mnist":
+        neural_network_model = MNIST_Model()
+    elif DATASET == "cifar10":
+        neural_network_model = CIFAR10_Model()
+    else:
+        assert False, f"Unknown dataset: {DATASET}"
     BATCH_SIZE = neural_network_model.batch_size()
     N_EPOCHS = neural_network_model.num_epochs()
     LR = neural_network_model.learning_rate()
-    # MOMENTUM = None
-    MOMENTUM = 0.9
 
-    model_version = "conv"
+    model_version = MODEL_NAME
     model = neural_network_model.fresh_model_instance(model_version, device)
 
     dataset = neural_network_model.dataset()
