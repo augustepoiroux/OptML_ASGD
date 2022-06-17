@@ -1,0 +1,13 @@
+#!/bin/bash
+#SBATCH --gres=gpu:0
+#SBATCH --nodes 1
+#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 1
+
+for dataset in "mnist" "cifar10"
+do
+for momentum in 0.1 0.3 0.6 0.9
+do
+    sbatch -n 1 -c 1 --wrap "python3 -m src.sgd --dataset $dataset --model conv --momentum $momentum"
+done
+done

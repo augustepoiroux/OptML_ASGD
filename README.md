@@ -41,3 +41,7 @@ These logs can be visualized using the following command (when executed at the r
     tensorboard --logdir runs
 
 Since there are a lot of runs, tensorboard may be a bit slow to parse them. One may want to first select a subset of these runs to visualize. This can be done manually by copying the logs to a new directory.
+
+### Reproducibility
+
+To reproduce exactly our results, one can find the slurm scripts we ran in the `scripts` directory.

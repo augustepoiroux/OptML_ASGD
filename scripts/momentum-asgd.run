@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --gres=gpu:0
+#SBATCH --nodes 1
+#SBATCH --ntasks 1
+#SBATCH --cpus-per-task 1
+
+for dataset in "mnist" "cifar10"
+do
+for algo in "raw"
+do
+for momentum in 0.1 0.3 0.6 0.9
+do
+for lat in 0.0 0.1 0.3 0.7 1.0 2.0
+do
+for ndevice in 6 10 20 50 100
+do
+    sbatch -n 1 -c 1 --wrap "python3 -m src.asgd --dataset $dataset --model conv --num-device $ndevice --latency-dispersion $lat --algo $algo --momentum $momentum"
+done
+done
+done
+done
+done
